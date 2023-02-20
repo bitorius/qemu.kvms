@@ -1,0 +1,9 @@
+#cloud-config
+password: fedora
+chpasswd: {expire: False}
+#ssh_pwauth: True
+runcmd:
+  - [ yum, -y, remove, cloud-init ]
+#  - [ yum, -y, update, cloud-init ]
+#  - [ poweroff ]
+
