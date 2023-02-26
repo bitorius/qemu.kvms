@@ -1,7 +1,51 @@
 #!/bin/bash
+usage() { echo "Usage: $0 [-r y|n] " 1>&2; exit 1; }
+
+if [ $# -eq 0 ]
+  then
+      echo "No arguments supplied"
+      usage
+fi
+
+while getopts ":r:" o; do
+    case "${o}" in
+        r)
+            r=${OPTARG}
+            if [[ $r == "y" || $r == "n" ]]
+	    then
+		RUN=$r
+	    else
+		echo "That option is not valid for -$o"
+		usage
+		exit -1
+	    fi
+            ;;
+	? )
+	    echo  "Please provide a valid option"
+	    usage
+	    exit -1
+	    ;;
+	:)
+	    echo ":"
+	    usage
+	    exit -1
+	    ;;
+	*)
+	    echo "*"
+	    usage
+	    exit -1
+	    ;;
+	
+	
+	esac
+done
+
+
 KVM_DIR="fc-k8s-cluster"
 IMAGE=Fedora-Cloud-Base-37-1.7.x86_64.qcow2
 HDA_DIR=hda
+
+
 
 #Get all machines we should be running
 pushd .
@@ -23,6 +67,7 @@ do
     echo "===================================================="
 
     MAC_ADD=$(echo "$line" | awk -F, '{print $1}')
+    MAC_IF=vtp$(echo $MAC_ADD| cut  -d ':' -f 5,6 | tr ":" ".")
     NAME=$(echo "$line" | awk -F, '{print $2}')
     CLUSTER=$(echo "$line" | awk -F, '{print $3}')
     
@@ -43,8 +88,19 @@ do
 	./create_cidata.sh $NAME
 	cd ..
     fi
-    kvm --name fcloud37_$NAME -m 1024 -hda $HDA_DIR/$HDA -cdrom cloud-init/seedci.$NAME.iso -chardev socket,id=compat_monitor1,path=qmp.$NAME.sock,server=on,wait=off -mon mode=control,chardev=compat_monitor1 -vnc :$NAME &
-    sleep 1
-    echo '{ "execute": "qmp_capabilities" }{ "execute": "query-status" }' | socat UNIX:$PWD/qmp.$NAME.sock stdio
-#	kvm --name fcloud37_$NAME -m 1024 -hda $HDA_DIR/$HDA -cdrom cloud-init/seedci.$NAME.iso -vnc :$NAME &
+
+    if [[ $RUN == "y" ]]; then
+	sudo ip link add link eno1 name $MAC_IF type macvtap
+	sudo ip link set $MAC_IF address $MAC_ADD up
+	sudo chown $(whoami) /dev/tap$(cat /sys/class/net/$MAC_IF/ifindex)
+	sleep 5
+	kvm --name fcloud37_$NAME -m 1024 -hda $HDA_DIR/$HDA -cdrom cloud-init/seedci.$NAME.iso -chardev socket,id=compat_monitor1,path=qmp.$NAME.sock,server=on,wait=off -mon mode=control,chardev=compat_monitor1 -net nic,model=virtio,macaddr=$(cat /sys/class/net/$MAC_IF/address) -net tap,fd=3 3<>/dev/tap$(cat /sys/class/net/$MAC_IF/ifindex) -vnc :$NAME &
+	sleep 1
+	echo '{ "execute": "qmp_capabilities" }{ "execute": "query-status" }' | socat UNIX:$PWD/qmp.$NAME.sock stdio
+    else
+	echo "sudo ip link add link eno1 name $MAC_IF type macvtap"
+	echo "sudo ip link set $MAC_IF address $MAC_ADD up"
+	echo "sudo chown $(whoami) /dev/tap$(cat /sys/class/net/$MAC_IF/ifindex)"
+	echo "kvm --name fcloud37_$NAME -m 1024 -hda $HDA_DIR/$HDA -cdrom cloud-init/seedci.$NAME.iso -chardev socket,id=compat_monitor1,path=qmp.$NAME.sock,server=on,wait=off -mon mode=control,chardev=compat_monitor1 -net nic,model=virtio,macaddr=$(cat /sys/class/net/$MAC_IF/address) -net tap,fd=3 3<>/dev/tap$(cat /sys/class/net/$MAC_IF/ifindex) -vnc :$NAME &"
+    fi
 done
