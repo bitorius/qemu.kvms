@@ -1,13 +1,8 @@
 #!/bin/bash
 usage() { echo "Usage: $0 [-r y|n] " 1>&2; exit 1; }
 
-if [ $# -eq 0 ]
-  then
-      echo "No arguments supplied"
-      usage
-fi
 
-while getopts ":r:" o; do
+while getopts "r:" o; do
     case "${o}" in
         r)
             r=${OPTARG}
@@ -39,6 +34,12 @@ while getopts ":r:" o; do
 	
 	esac
 done
+
+if [ $# -eq 0 ]
+  then
+      echo "No arguments supplied"
+      usage
+fi
 
 
 KVM_DIR="fc-k8s-cluster"
