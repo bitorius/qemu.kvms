@@ -1,0 +1,22 @@
+#cloud-config
+password: fedora
+chpasswd: {expire: False}
+ssh_pwauth: True
+users:
+    - default
+    - name: root
+      ssh-authorized-keys:
+      - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQCrni0xOWDgfEXZi9qNh5ufsjULS5XJAvYc2/IYVDUDl2k4Mmt6OHgR3cFzZb/dt3ngm54F4uStZq/neqgDbYAzMbRuhHA4eiX902HzNbLfZbvRvcouhP0rm3zP4HbGqRoUQKKWqELrnh9BAK2pLbqa4I/JUf2Zkti2byG8WikRN5WBKus2bSDgiYA+w/N/u6KcmIEctYOGZvxbw6b720BD5I63kPURrSDWtCja3xCQAscBMCIuG0BhrAbJn5ABMlWmRQv1nxOCdE/bwzj6sWz+f3OBK5n9G0c0X17tUyMbEQUcW3aCWvODztpzB+UWzASOlqm2Fp94faMs7dBZjqrbV6RVqxKDKRO/XTrFCmM/96+QfJHmS14QZnG14STSuP1ZU1aUtvZ0tsaAnDsIE6akQv8PowqUQVMX0ws4ij/DJxQHSBmvnt2dx8nJ3DVrOok6S50uu0XQxleWTTcRRLaMHOhMUNeR7c6EzJP95+1Ux5NzxmWXM7JLRvBWw/BiHPjinBp+4gSPIbwVRNquCpzE2x4qQvI37QVn1EmbWq9+vlT+3PL+kic7I4xs7+EULNTHIqEGDBo891WkJ+0xeSpSoHBJblG8YVI8+KYdVFrZq3EEItQVbu0JdhFUrQmwjxjIcDfPqYWk9f2fXwuTWrNUCQ9MJx1w43XhYFylLDgM9w== bitorius@gent00.com
+
+package_upgrade: true
+#packages:
+#- cloud-init
+
+runcmd:
+  - [ yum, -y, update ]
+#  - [ yum, -y, remove, cloud-init ]
+#  -  mkdir -pv /run/k3s
+#  - 'curl -sfL https://get.k3s.io | sh - '
+#  - [ yum, -y, update, cloud-init ]
+#  - [ poweroff ]
+
