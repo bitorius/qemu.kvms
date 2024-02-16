@@ -26,7 +26,7 @@ func main() {
 	fmt.Printf("CREATE TABLE IF NOT EXISTS virtmach (vm_mac text PRIMARY KEY,vm_name TEXT NOT NULL,vm_appident TEXT NOT NULL);\n")
 	for x := 0; x < 4; x++ {
 		buf[5] = byte(x)
-		fmt.Printf("INSERT INTO virtmach(vm_mac,vm_name,vm_appident) values('%02x:%02x:%02x:%02x:%02x:%02x','%s','%s');\n", buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], strconv.Itoa(x),appName)
+		fmt.Printf("INSERT INTO virtmach(vm_mac,vm_name,vm_appident) values('%02x:%02x:%02x:%02x:%02x:%02x,%02x:%02x:%02x:%02x:%02x:%02x','%s','%s');\n", buf[0], buf[1], buf[2], buf[3], buf[4], buf[5],buf[0], buf[1], buf[2], buf[3], buf[4], buf[5]+1, strconv.Itoa(x),appName)
 	}
 	fmt.Printf("select * from virtmach;\n")
 }

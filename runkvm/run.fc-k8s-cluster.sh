@@ -1,8 +1,8 @@
 #!/bin/bash
-usage() { echo "Usage: $0 [-r y|n] " 1>&2; exit 1; }
+usage() { echo "Usage: $0 [-r y|n] [-l MAX_VMS]" 1>&2; exit 1; }
 
 
-while getopts "r:" o; do
+while getopts "r:l:" o; do
     case "${o}" in
         r)
             r=${OPTARG}
@@ -15,6 +15,15 @@ while getopts "r:" o; do
 		exit -1
 	    fi
             ;;
+	l)
+	    l=${OPTARG}
+	    re='^[0-9]+$'
+	    if ! [[ $l =~ $re ]] ; then
+		echo "error: Not a number" >&2;
+		usage
+		exit 1
+	    fi
+	    ;;
 	? )
 	    echo  "Please provide a valid option"
 	    usage
@@ -62,19 +71,39 @@ pwd
 
 mkdir -pv $HDA_DIR
 
+#Setting up bridge for intra-vm
+
+echo "Setting up bridge on subnet 172.20.0.1/16"
+sudo ip addr add 172.20.0.1/16 dev kvmBr0
+sudo ip link set kvmBr0 up
+
+echo "Running DNSMASQ for intra-vm dhcp"
+sudo dnsmasq --interface=kvmBr0 --bind-interfaces --dhcp-range=172.20.0.2,172.20.255.254
+
+VMCOUNT=0 #Current VMs created/start
+
+
 echo  "$MY_MACHINE_LIST" | while read line ;
 do
+    if [ "$VMCOUNT" -ge "$l" ]; then
+	echo "Exiting at $VMCOUNT VMs."
+	exit -1;
+    fi
     echo "$line"
     echo "===================================================="
 
-    MAC_ADD=$(echo "$line" | awk -F, '{print $1}')
-    MAC_IF=vtp$(echo $MAC_ADD| cut  -d ':' -f 5,6 | tr ":" ".")
-    NAME=$(echo "$line" | awk -F, '{print $2}')
-    CLUSTER=$(echo "$line" | awk -F, '{print $3}')
+    MAC_ADD_1=$(echo "$line" | awk -F, '{print $1}' | tr -d '"')
+    MAC_ADD_2=$(echo "$line" | awk -F, '{print $2}' | tr -d '"')
+    MAC_IF_1=vtp.$(echo $MAC_ADD_1| cut  -d ':' -f 5,6 | tr ":" ".")
+    NAME=$(echo "$line" | awk -F, '{print $3}')
+    CLUSTER=$(echo "$line" | awk -F, '{print $4}')
     
-    echo MAC Address: $MAC_ADD
+    echo MAC Address: $MAC_ADD_1
+    echo MAC IF: $MAC_IF_1
+    echo MAC Address 2: $MAC_ADD_2
     echo Name: $NAME
     echo Cluster: $CLUSTER
+
     HDA=$(basename $IMAGE|sed 's/\.[^.]*$//').$NAME.qcow2
     if [ -f "$HDA_DIR/$HDA" ]; then
 	echo "Existing drive found for $HDA_DIR/$HDA"
@@ -90,18 +119,34 @@ do
 	cd ..
     fi
 
-    if [[ $RUN == "y" ]]; then
-	sudo ip link add link eno1 name $MAC_IF type macvtap
-	sudo ip link set $MAC_IF address $MAC_ADD up
-	sudo chown $(whoami) /dev/tap$(cat /sys/class/net/$MAC_IF/ifindex)
-	sleep 5
-	kvm --name fcloud37_$NAME -m 1024 -hda $HDA_DIR/$HDA -cdrom cloud-init/seedci.$NAME.iso -chardev socket,id=compat_monitor1,path=qmp.$NAME.sock,server=on,wait=off -mon mode=control,chardev=compat_monitor1 -net nic,model=virtio,macaddr=$(cat /sys/class/net/$MAC_IF/address) -net tap,fd=3 3<>/dev/tap$(cat /sys/class/net/$MAC_IF/ifindex) -vnc :$NAME &
+    VMCOUNT=$((VMCOUNT+1))
+    if [[ $RUN == "n" ]]; then
+	RUN_CMD="echo -n"
+    fi
+    
+    echo "Setting up vtap to WAN"
+    echo "Adding link $MAC_IF_1"
+    sudo ip link add link eno1 name $MAC_IF_1 type macvtap
+    echo "Bringing Link $MAC_IF_1 up for $MAC_ADD_1"
+    sudo ip link set $MAC_IF_1 address $MAC_ADD_1 up
+    echo "Setting ownership on /sys/class/net/$MAC_IF_1/ifindex"
+    sleep 2
+    echo sudo chown $(whoami) /dev/tap$(cat /sys/class/net/$MAC_IF_1/ifindex)
+    sudo chown $(whoami) /dev/tap$(cat /sys/class/net/$MAC_IF_1/ifindex)
+    sleep 2
+
+    echo "$MAC_IF_1 is setup for WAN communication through macvtap"
+    echo "$MAC_ADD_2 is setup for intra-VM communication using kvmBr0"
+    
+
+    echo Running KVM 
+    echo "kvm --name fcloud37_$NAME -m 1024 -hda $HDA_DIR/$HDA -cdrom cloud-init/seedci.$NAME.iso -chardev socket,id=compat_monitor1,path=qmp.$NAME.sock,server=on,wait=off -mon mode=control,chardev=compat_monitor1 -net nic,id=n1,netdev=t1,model=virtio,macaddr=$(cat /sys/class/net/$MAC_IF_1/address) -netdev tap,fd=3,id=t1 3<>/dev/tap$(cat /sys/class/net/$MAC_IF_1/ifindex) -nic bridge,br=kvmBr0,mac=$MAC_ADD_2"
+    $RUN_CMD kvm --name fcloud37_$NAME -m 8000 -hda $HDA_DIR/$HDA -cdrom cloud-init/seedci.$NAME.iso -chardev socket,id=compat_monitor1,path=qmp.$NAME.sock,server=on,wait=off -mon mode=control,chardev=compat_monitor1 -net nic,id=n1,netdev=t1,model=virtio,macaddr=$(cat /sys/class/net/$MAC_IF_1/address) -netdev tap,fd=3,id=t1 3<>/dev/tap$(cat /sys/class/net/$MAC_IF_1/ifindex) -nic bridge,br=kvmBr0,mac=$MAC_ADD_2 -vnc :$((NAME+10)) &
+
+    if [[ $RUN == "y" ]];then
 	sleep 1
-	echo '{ "execute": "qmp_capabilities" }{ "execute": "query-status" }' | socat UNIX:$PWD/qmp.$NAME.sock stdio
-    else
-	echo "sudo ip link add link eno1 name $MAC_IF type macvtap"
-	echo "sudo ip link set $MAC_IF address $MAC_ADD up"
-	echo "sudo chown $(whoami) /dev/tap$(cat /sys/class/net/$MAC_IF/ifindex)"
-	echo "kvm --name fcloud37_$NAME -m 1024 -hda $HDA_DIR/$HDA -cdrom cloud-init/seedci.$NAME.iso -chardev socket,id=compat_monitor1,path=qmp.$NAME.sock,server=on,wait=off -mon mode=control,chardev=compat_monitor1 -net nic,model=virtio,macaddr=$(cat /sys/class/net/$MAC_IF/address) -net tap,fd=3 3<>/dev/tap$(cat /sys/class/net/$MAC_IF/ifindex) -vnc :$NAME &"
+	echo '{ "execute": "qmp_capabilities" }{ "execute": "query-status" }' cat && echo socat UNIX:$PWD/qmp.$NAME.sock stdio
+	echo Waiting for next vm
+	sleep 5
     fi
 done
