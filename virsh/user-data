@@ -12,10 +12,18 @@ package_upgrade: true
 #packages:
 #- cloud-init
 
+write_files:
+  - path: /run/scripts/notify_new_vm.sh
+    content: |
+      #!/bin/bash
+      hostname --all-ip-addresses | awk '{print $1, '$(date +%s)' }' | nc 192.168.254.1 9000
+      echo 'Script executed successfully!' >> /run/testing.txt
+    permissions: '0755'
+
 runcmd:
   - [ yum, -y, update ]
-#  - [ yum, -y, remove, cloud-init ]
-#  -  mkdir -pv /run/k3s
+  - [ yum, -y, install, nc ]
+  - [ sh , "/run/scripts/notify_new_vm.sh" ]
 #  - 'curl -sfL https://get.k3s.io | sh - '
 #  - [ yum, -y, update, cloud-init ]
 #  - [ poweroff ]
